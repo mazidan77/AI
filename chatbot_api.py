@@ -1,35 +1,17 @@
-# from flask import Flask, request, jsonify
-# import google.generativeai as genai
-# from flask_cors import CORS
 
-# app = Flask(__name__)
-# CORS(app)  # Allow cross-origin requests (from frontend)
-
-# # Configure Gemini API
-# genai.configure(api_key="AIzaSyDS9tePm7YHqCSIVEzeuQ6DYX6XytbGQSg")
-# model = genai.GenerativeModel('gemini-1.5-flash')
-# chat = model.start_chat()
-
-# @app.route('/chat', methods=['POST'])
-# def chat_with_bot():
-#     data = request.get_json()
-#     user_message = data.get('message', '')
-
-#     if not user_message:
-#         return jsonify({'error': 'Message is required'}), 400
-
-#     response = chat.send_message(user_message)
-#     return jsonify({'response': response.text})
-
-# if __name__ == '__main__':
-#     app.run(debug=True)
+# python --version
+#  pip3 install flask
+#   python -m pip install --upgrade google-generativeai
+#    pip install flask google-generativeai flask-cors
+#    pip install flask flask-cors google-generativeai pdfplumber python-docx
+# python chatbot_api.py
 from flask import Flask, request, jsonify
 import google.generativeai as genai
 from flask_cors import CORS
 import pdfplumber
 import docx
 import io
-
+import re
 app = Flask(__name__)
 CORS(app)
 
@@ -177,7 +159,110 @@ def interview():
     return jsonify({'recommendations': recommendations})
 
 
+@app.route('/enhance_text', methods=['POST'])
+def enhance_text():
+    data = request.get_json()
+    user_text = data.get('text', '')
+
+    if not user_text:
+        return jsonify({'error': 'Text is required'}), 400
+
+    prompt = (
+        "You're an expert editor.\n"
+        "Improve the grammar, clarity, and wording of the following text. "
+        "Use stronger verbs and more professional tone. "
+        "Highlight fixes with emojis like ✅ for good changes and ⚠️ for needed improvements.\n\n"
+        f"Text:\n{user_text}\n\n"
+        "Return only the improved version as HTML with:\n"
+        "- <strong> for fixes\n"
+        "- <span style='color:green'> for good parts\n"
+        "- <span style='color:orange'> for issues\n"
+    )
+
+    try:
+        response = chat.send_message(prompt)
+        improved = response.text
+    except Exception as e:
+        return jsonify({'error': f'AI failed: {str(e)}'}), 500
+
+    return jsonify({'enhanced': improved})
 
 
+
+def is_arabic(text):
+
+    arabic_chars = re.findall(r'[\u0600-\u06FF]', text)
+    return len(arabic_chars) > len(text) * 0.4  # adjust threshold if needed
+
+@app.route('/translate_auto', methods=['POST'])
+def translate_auto():
+    data = request.get_json()
+    text = data.get('text', '').strip()
+
+    if not text:
+        return jsonify({'error': 'Text is required'}), 400
+
+    if is_arabic(text):
+        prompt = (
+            f"Translate this Arabic sentence into Franco (Arabizi):\n{text}\n\n"
+            "Just return the Franco version without extra explanation."
+        )
+    else:
+        prompt = (
+            f"Translate this Franco (Arabizi) sentence to Arabic:\n{text}\n\n"
+            "Just return the Arabic translation without extra explanation."
+        )
+
+    try:
+        response = chat.send_message(prompt)
+        return jsonify({'translation': response.text.strip()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/medical_code_lookup', methods=['POST'])
+def medical_code_lookup():
+    data = request.get_json()
+    code = data.get('code', '').strip()
+
+    if not code:
+        return jsonify({'error': 'Medical code is required'}), 400
+
+    prompt = (
+            f"Explain CPT code '{code}'\n"
+   
+    f"Include the full description , what services are included , when it's used , and what modifiers mean if present.\n"
+
+    )
+
+    try:
+        response = chat.send_message(prompt)
+        return jsonify({'meaning': response.text.strip()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+
+@app.route('/generate_webpage_code', methods=['POST'])
+def generate_webpage_code():
+    data = request.get_json()
+    prompt = data.get('prompt', '').strip()
+
+    if not prompt:
+        return jsonify({'error': 'Prompt is required'}), 400
+
+    gemini_prompt = (
+    f"Generate a complete single-page HTML, CSS, and JavaScript web page based on this description:\n"
+    f"{prompt}\n\n"
+    "Only return the full raw code of the page. Do NOT wrap it in triple backticks or markdown. No explanation. Just return plain code."
+    )
+
+    try:
+        response = chat.send_message(gemini_prompt)
+        return jsonify({'code': response.text.strip()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 if __name__ == '__main__':
-    app.run(debug=True)
+    # app.run(debug=True)
+import os
+port = int(os.environ.get("PORT", 5000))
+app.run(host="0.0.0.0", port=port)
